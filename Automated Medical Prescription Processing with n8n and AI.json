@@ -1,0 +1,335 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -432,
+        -16
+      ],
+      "id": "2da186d3-3d7f-40ea-988c-09db9e2218d5",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "3KI1ObJrulYblm0M",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "text": "You are an expert AI specializing in medical document analysis. Your task is to analyze the attached prescription image and convert its contents into a structured JSON object, preserving the document's original layout and logical groupings as much as possible.\n\nIdentify the main visual sections of the form (e.g., \"Patient Details,\" \"Medication,\" \"Doctor Information,\" etc.). Use the titles of these sections as the top-level keys in your JSON object. Under each key, list the corresponding information as key-value pairs.\n\nYou have one critical and mandatory requirement:\nRegardless of the form's layout, you MUST create a top-level key named \"patientInformation\". This object MUST contain a key named \"name\" with the patient's full name as its value.\n\nFor all other sections, create keys and nested objects based on the visual structure you see in the document.\n\nProvide only the raw JSON object in your response, without any extra text or markdown formatting.",
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -16
+      ],
+      "id": "d7b16797-eb40-4275-932a-d4429235a142",
+      "name": "Analyze an image",
+      "retryOnFail": true,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "KE5Irh1ynU6RyGyw",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// This code runs for EACH of the 3 items passed to the node.\n// The variable 'item' automatically represents the current item in the loop.\n\n// 1. Safely access the raw text string from the CURRENT item.\n// We use 'item' directly, NOT '$input.first()'.\nlet rawString = item.json && item.json.content && item.json.content.parts && item.json.content.parts[0] && item.json.content.parts[0].text;\n\n// 2. Check if the string exists before we try to process it.\nif (rawString) {\n  // 3. Clean the string to remove markdown blocks, which the AI sometimes adds.\n  rawString = rawString.trim();\n  if (rawString.startsWith(\"```json\")) {\n    rawString = rawString.substring(7); // Remove the starting \"```json\\n\"\n  }\n  if (rawString.endsWith(\"```\")) {\n    rawString = rawString.substring(0, rawString.length - 3); // Remove the final \"```\"\n  }\n  rawString = rawString.trim(); // Trim again after cleaning.\n\n  try {\n    // 4. Parse the now-clean string into a real JSON object.\n    const parsedJson = JSON.parse(rawString);\n\n    // 5. Overwrite the current item's entire .json property with our new, clean object.\n    item.json = parsedJson;\n\n  } catch (error) {\n    // If parsing fails, we'll know the AI gave us bad JSON for this item.\n    item.json.error = \"Failed to parse the JSON string after cleaning.\";\n    item.json.originalString = rawString;\n  }\n} else {\n  // This handles cases where the AI might have failed to return text.\n  item.json.error = \"Could not find the text field in the AI's response for this item.\";\n}\n\n// 6. Return the modified item. The workflow will then run this same code for the next item in the list.\nreturn item;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -16
+      ],
+      "id": "9b007a8d-a94f-4ddc-a996-d443703ecb38",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "={{ $json.patientInformation.name.charAt(0).toUpperCase() }}",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "1ONa0xSX8CvV-yp-bvd2IHrA9N3CGyLiq",
+            "mode": "list",
+            "cachedResultName": "Processed Prescription",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1ONa0xSX8CvV-yp-bvd2IHrA9N3CGyLiq"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        240,
+        -16
+      ],
+      "id": "bee5502b-24f1-4aa8-98f6-8f0da088250f",
+      "name": "Search files and folders",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "3KI1ObJrulYblm0M",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Code in JavaScript').item.json.patientInformation.name }}-{{ $now.extract('day') }}.{{ $now.extract('month') }}.{{ $now .extract('year')}} | {{ $now.extract('hour') }}.{{ $now .extract('minute')}}.{{ $now .extract('second')}}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        464,
+        -16
+      ],
+      "id": "bd94d68f-68e5-4d17-a079-92376c959f50",
+      "name": "Create folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "3KI1ObJrulYblm0M",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "createFromText",
+        "content": "={{ JSON.stringify($('Code in JavaScript').first().json, null, 2) }}",
+        "name": "={{ $('Code in JavaScript').item.json.patientInformation.name }}.json",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        688,
+        -16
+      ],
+      "id": "cd1246d3-781d-492f-a03b-1df41189924f",
+      "name": "Create file from text",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "3KI1ObJrulYblm0M",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -432,
+        -176
+      ],
+      "id": "846cd44f-9987-4696-bd64-c77363a45824",
+      "name": "Delete a file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "3KI1ObJrulYblm0M",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "1atyfrr9wdhSEjDlmbCO4t-Yge3BM07Du",
+            "mode": "list",
+            "cachedResultName": "Unprocessed Prescription",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1atyfrr9wdhSEjDlmbCO4t-Yge3BM07Du"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        -16
+      ],
+      "id": "e6bc110d-53f6-4af7-a2fc-c49448a13de8",
+      "name": "Search files and folders1",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "3KI1ObJrulYblm0M",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -864,
+        -16
+      ],
+      "id": "f9911cab-47ff-437d-82c3-5e75777a499f",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders": {
+      "main": [
+        [
+          {
+            "node": "Create folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create folder": {
+      "main": [
+        [
+          {
+            "node": "Create file from text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search files and folders1": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Delete a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Search files and folders1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4bad2a1b-6abf-4db4-b77e-8500f181f5f9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "522422dd1b008480c9273dc8c76dde19e1061a7e895e7eaec12d63c604650ca0"
+  },
+  "id": "yDkRAnN2lMFIfQvj",
+  "tags": []
+}
